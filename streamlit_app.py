@@ -1,11 +1,13 @@
-# streamlit_app.py
-
-import streamlit as st
+import streamlit as st 
 import pandas as pd
 from datasets import load_dataset
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import random
+
+# --- Konfigurasi Halaman Streamlit ---
+# st.set_page_config() HARUS menjadi perintah Streamlit pertama setelah import.
+st.set_page_config(page_title="Mental Health Chatbot", page_icon="🤖")
 
 # --- 1. Load dataset Mental_Health_FAQ dari HuggingFace ---
 # Gunakan st.cache_data agar data hanya dimuat sekali saat aplikasi berjalan
@@ -16,11 +18,9 @@ def load_data():
         if 'Questions' not in df_loaded.columns or 'Answers' not in df_loaded.columns:
             st.error("Error: Dataset must contain 'Questions' and 'Answers' columns.")
             raise ValueError("Dataset must contain 'Questions' and 'Answers' columns.")
-        st.success("Dataset loaded successfully.")
         return df_loaded
     except Exception as e:
         st.error(f"Error loading dataset: {e}. Falling back to dummy data.")
-        # Fallback to dummy data if loading fails
         data = {
             'Questions': [
                 "What is anxiety?", "How to deal with stress?", "Symptoms of depression",
@@ -47,7 +47,6 @@ def load_data():
 df = load_data()
 
 # --- 2. TF-IDF Vectorization ---
-# Gunakan st.cache_resource untuk model/objek besar
 @st.cache_resource
 def initialize_vectorizer(dataframe):
     vectorizer_obj = TfidfVectorizer()
@@ -61,19 +60,16 @@ def chatbot_response(user_input, vectorizer_obj, faq_vectors_obj, dataframe):
     user_vector = vectorizer_obj.transform([user_input])
     similarities = cosine_similarity(user_vector, faq_vectors_obj)
     idx = similarities.argmax()
-    
-    # Adjusted threshold for 'no match'. You might need to fine-tune this.
-    # A lower threshold makes it more likely to find a match, but might return less relevant answers.
-    if similarities[0, idx] < 0.2: # Lowered from 0.4 for potentially better matching
+
+    if similarities[0, idx] < 0.2:
         return "I'm not sure I understand your question. Could you rephrase it or ask about a general mental health topic? Please use English."
-    
+
     return dataframe.iloc[idx]['Answers']
 
 # --- 4. Stress Level Classification ---
 def classify_stress_level(user_input):
     input_lower = user_input.lower()
-    
-    # Updated keywords for better classification, using common English phrases
+
     keywords = {
         "low": [
             "slightly stressed", "a bit worried", "uneasy", "restless", "on edge", "nervous",
@@ -137,16 +133,15 @@ def classify_stress_level(user_input):
     for level, words in keywords.items():
         if any(word in input_lower for word in words):
             return level
-    return random.choice(["moderate", "optimum"]) # Default fallback remains
+    return random.choice(["moderate", "optimum"])
 
 # --- Streamlit UI Components ---
-st.set_page_config(page_title="Mental Health Chatbot", page_icon="🤖")
 st.title("Mental Health Chatbot 🤖")
 st.markdown("Hello! I'm here to listen and try to help you.")
 st.markdown("You can tell me how you feel or ask about mental health topics.")
 st.markdown("---")
 
-# Initialize session state for chat history, user name, and last bot prompt
+# Inisialisasi session state
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "user_name" not in st.session_state:
@@ -154,40 +149,35 @@ if "user_name" not in st.session_state:
 if "last_bot_prompt" not in st.session_state:
     st.session_state.last_bot_prompt = ""
 
-# Get user's name if not already set
-if not st.session_state.user_name: # Check if user_name is empty or None
+# --- Alur Chat Utama ---
+if not st.session_state.user_name:
     user_name_input = st.text_input("Bot: First, what should I call you?", key="name_input")
     if user_name_input:
         st.session_state.user_name = user_name_input.strip()
-        if not st.session_state.user_name: # If user just pressed enter or typed spaces
-            st.session_state.user_name = "User" # Fallback to default name
-        
-        # Add initial greeting to chat history
-        initial_greeting = f"Nice to meet you, {st.session_state.user_name.capitalize()}! Let's begin. How can I help you today?"
-        st.write(f"Bot: {initial_greeting}")
-        st.session_state.messages.append({"role": "assistant", "content": initial_greeting})
-        st.session_state.last_bot_prompt = f"How can I help you today, {st.session_state.user_name.capitalize()}?" # Set initial prompt
+        if not st.session_state.user_name:
+            st.session_state.user_name = "User"
 
-else: # If user_name is already set, proceed with chat
-    # Display chat messages from history
+        initial_greeting = f"Nice to meet you, {st.session_state.user_name.capitalize()}! Let's begin. How can I help you today?"
+        st.session_state.messages.append({"role": "assistant", "content": initial_greeting})
+        st.session_state.last_bot_prompt = f"How can I help you today, {st.session_state.user_name.capitalize()}?"
+
+        st.rerun()
+
+else: # Jika nama sudah diatur
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
-    # Chat input from user
     user_input = st.chat_input(f"Your message, {st.session_state.user_name.capitalize()}:")
 
     if user_input:
-        # Add user message to history
         st.session_state.messages.append({"role": "user", "content": user_input})
         with st.chat_message("user"):
             st.markdown(user_input)
 
         input_lower = user_input.lower().strip()
-        bot_response_parts = [] # To collect all parts of the bot's response
+        bot_response_parts = []
 
-        # --- Simple Context Handling for Bot's Follow-up Questions ---
-        # Check if the current input is a direct response to the last_bot_prompt
         if st.session_state.last_bot_prompt and ("yes" in input_lower or "yeah" in input_lower or "yup" in input_lower or "no" in input_lower or "nope" in input_lower):
             if "yes" in input_lower or "yeah" in input_lower or "yup" in input_lower:
                 if "additional resources" in st.session_state.last_bot_prompt:
@@ -200,43 +190,39 @@ else: # If user_name is already set, proceed with chat
                     bot_response_parts.append("Campus counseling offers direct and often free support. Professional psychologists provide more in-depth therapy. Apps can give you tools for meditation or mood tracking. What do you need most right now?")
                 elif "interests you most" in st.session_state.last_bot_prompt:
                     bot_response_parts.append("I'm ready to provide more information about that!")
-                else: # Generic yes
+                else:
                     bot_response_parts.append("Okay, let's continue.")
-                st.session_state.last_bot_prompt = "" # Reset prompt after handling
+                st.session_state.last_bot_prompt = ""
             elif "no" in input_lower or "nope" in input_lower:
                 bot_response_parts.append("Okay, no problem. Is there anything else I can help you with or another topic you'd like to discuss?")
-                st.session_state.last_bot_prompt = "" # Reset
-            
-            # Handle general conversational intents that might bypass FAQ search
-            if "what's your name" in input_lower:
+                st.session_state.last_bot_prompt = ""
+
+            if "what's your name" in input_lower and "what's your name" not in bot_response_parts[0].lower():
                 bot_response_parts.append("I'm a chatbot designed to support your mental health. You can call me your Mental Assistant.")
-            elif "how are you" in input_lower:
+            elif "how are you" in input_lower and "how are you" not in bot_response_parts[0].lower():
                 bot_response_parts.append("I don't have feelings like humans, but I'm here and ready to help you! Thanks for asking.")
-            
-            # Combine the parts for display
+
             final_bot_response = "\n\n".join(bot_response_parts)
 
-        else: # Not a direct yes/no to previous prompt, process as a new query
+        else:
             faq_answer = chatbot_response(user_input, vectorizer, faq_vectors, df)
             stress_level = classify_stress_level(user_input)
-            
+
             bot_response_parts.append(f"Personal Response: {faq_answer}")
             bot_response_parts.append(f"Detected Stress Level: {stress_level.capitalize()}")
-            
-            # Set next follow-up question based on stress level
+
             if stress_level in ["high", "very high"]:
                 st.session_state.last_bot_prompt = f"I understand you're feeling {stress_level} right now, {st.session_state.user_name.capitalize()}. Remember, seeking professional help is a strong act, not a weakness. Would you like to know about additional resources for this situation?"
             elif stress_level == "moderate":
                 st.session_state.last_bot_prompt = f"Thanks for sharing, {st.session_state.user_name.capitalize()}. Feeling {stress_level} is common. Remember, it's important to take care of yourself. Is there anything specific you'd like to explore further about your feelings?"
             elif stress_level in ["low", "optimum"]:
                 st.session_state.last_bot_prompt = f"Glad to hear you're feeling {stress_level}, {st.session_state.user_name.capitalize()}! Keep up the great work on your mental well-being. Would you like to know any other tips to stay on this positive track?"
-            else: # Fallback prompt
+            else:
                 st.session_state.last_bot_prompt = f"Is there anything else you'd like to talk about or ask, {st.session_state.user_name.capitalize()}?"
-            
+
             bot_response_parts.append(f"Bot: {st.session_state.last_bot_prompt}")
             final_bot_response = "\n\n".join(bot_response_parts)
 
-        # Display bot's response and add to history
         with st.chat_message("assistant"):
             st.markdown(final_bot_response)
         st.session_state.messages.append({"role": "assistant", "content": final_bot_response})
